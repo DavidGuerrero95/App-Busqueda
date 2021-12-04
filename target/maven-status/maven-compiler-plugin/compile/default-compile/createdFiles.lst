@@ -1,0 +1,8 @@
+com\app\busqueda\clients\ProyectosFeignClient.class
+com\app\busqueda\clients\RecomendacionesFeignClient.class
+com\app\busqueda\config\SwaggerConfiguration.class
+com\app\busqueda\models\Proyectos.class
+com\app\busqueda\repository\BusquedaRepository.class
+com\app\busqueda\models\Busqueda.class
+com\app\busqueda\controllers\BusquedaController.class
+com\app\busqueda\AppBusquedaApplication.class
