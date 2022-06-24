@@ -10,7 +10,7 @@ import com.app.busqueda.models.Proyectos;
 @FeignClient(name = "app-proyectos")
 public interface ProyectosFeignClient {
 
-	@GetMapping("/proyectos/listar")
+	@GetMapping("/proyectos/listar/")
 	public List<Proyectos> getProyectos();
 
 }
