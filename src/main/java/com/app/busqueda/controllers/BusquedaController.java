@@ -1,31 +1,30 @@
 package com.app.busqueda.controllers;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.app.busqueda.clients.ProyectosFeignClient;
-import com.app.busqueda.clients.RecomendacionesFeignClient;
 import com.app.busqueda.models.Busqueda;
-import com.app.busqueda.models.Proyectos;
 import com.app.busqueda.repository.BusquedaRepository;
+import com.app.busqueda.responses.Proyectos;
+import com.app.busqueda.services.IBusquedaServices;
+
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
+@Slf4j
 public class BusquedaController {
-
-	private final Logger logger = LoggerFactory.getLogger(BusquedaController.class);
 
 	@SuppressWarnings("rawtypes")
 	@Autowired
@@ -38,109 +37,55 @@ public class BusquedaController {
 	ProyectosFeignClient pClient;
 
 	@Autowired
-	RecomendacionesFeignClient rClient;
+	IBusquedaServices bServices;
 
-	@PostMapping("/busqueda/crear/")
-	@ResponseStatus(code = HttpStatus.CREATED)
-	public void crearBusqueda() {
-		Busqueda bus = new Busqueda();
-		bus.setNombre("busqueda");
-		bus.setPalabrasClaveProyectos(new ArrayList<String>());
-		bus.setPalabrasClaveMuros(new ArrayList<Integer>());
-		bRepository.save(bus);
-	}
+//  ****************************	BUSQUEDA	***********************************  //
 
-	@PutMapping("/busqueda/proyecto/editar/")
-	@ResponseStatus(code = HttpStatus.OK)
-	public Boolean editarProyecto(@RequestParam("nombre") String nombre) throws IOException {
-		try {
-			if (bRepository.findAll().isEmpty()) {
-				crearBusqueda();
-			}
-			Busqueda busqueda = bRepository.findByNombre("busqueda");
-			List<String> proyectos = busqueda.getPalabrasClaveProyectos();
-			proyectos.add(nombre.toLowerCase());
-			busqueda.setPalabrasClaveProyectos(proyectos);
-			bRepository.save(busqueda);
-			return true;
-		} catch (Exception e) {
-			throw new IOException("Error edicion proyecto, busqueda: " + e.getMessage());
-		}
-	}
+	// ************ PROYECTOS ************** //
 
-	@PutMapping("/busqueda/muro/editar/")
-	@ResponseStatus(code = HttpStatus.OK)
-	public Boolean editarMuro(@RequestParam("nombre") Integer nombre) throws IOException {
-		try {
-			Busqueda busqueda = bRepository.findByNombre("busqueda");
-			List<Integer> muro = busqueda.getPalabrasClaveMuros();
-			muro.add(nombre);
-			busqueda.setPalabrasClaveMuros(muro);
-			bRepository.save(busqueda);
-			return true;
-		} catch (Exception e) {
-			throw new IOException("Error edicion muro, busqueda: " + e.getMessage());
-		}
-	}
-
+	// BUSCAR PROYECTOS
 	@GetMapping("/busqueda/proyectos/buscar/")
 	@ResponseStatus(code = HttpStatus.OK)
 	public List<Proyectos> buscarProyectos(@RequestParam("username") String username,
 			@RequestParam("busqueda") String busqueda) {
-		List<String> palabras = bRepository.findByNombre("busqueda").getPalabrasClaveProyectos();
-		List<Integer> resultado = new ArrayList<Integer>();
-
-		List<Proyectos> allProyectos = pClient.getProyectos();
-		List<Proyectos> proyectos = new ArrayList<Proyectos>();
-		if (cbFactory.create("busqueda").run(() -> rClient.editarBusqueda(username, busqueda), e -> errorConexion(e))) {
-			logger.info("Creacion Correcta");
+		List<Integer> index = bServices.buscarProyectos(username, busqueda.toLowerCase());
+		if (!index.isEmpty()) {
+			return cbFactory.create("respuestas").run(() -> pClient.busquedaObtener(index),
+					e -> busquedaObtenerError(index, e));
 		}
-		for (int i = 0; i < palabras.size(); i++) {
-			if (palabras.get(i).toLowerCase().contains(busqueda.toLowerCase())) {
-				resultado.add(palabras.indexOf(palabras.get(i)));
-			}
-		}
-		if (resultado.isEmpty()) {
-			return allProyectos;
-		} else {
-			for (int i = 0; i < resultado.size(); i++) {
-				proyectos.add(allProyectos.get(resultado.get(i)));
-			}
-			return proyectos;
-		}
+		throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No se encontro proyectos con tu busqueda");
 	}
 
-	@PutMapping("/busqueda/proyecto/eliminar/")
+	// ************ USUARIOS ************** //
+
+	// BUSQUEDA DE USUARIOS
+	@GetMapping("/busqueda/username/ver/{username}")
 	@ResponseStatus(code = HttpStatus.OK)
-	public Boolean eliminarProyecto(@RequestParam("nombre") String nombre) throws IOException {
+	public List<Busqueda> buscarBusquedasUsername(@PathVariable("username") String username) {
+		if (bRepository.existsByUsername(username))
+			return bRepository.findByUsername(username);
+		throw new ResponseStatusException(HttpStatus.NOT_FOUND, "El usuario no tiene busquedas");
+	}
+
+	// MICROSERVICIO USUARIOS -> ELIMINAR USUARIO
+	@DeleteMapping("/busqueda/username/eliminar/{username}")
+	public Boolean eliminarBusquedasUsername(@PathVariable("username") String username) throws IOException {
 		try {
-			Busqueda busqueda = bRepository.findByNombre("busqueda");
-			List<String> listaProyectos = busqueda.getPalabrasClaveProyectos();
-			listaProyectos.remove(nombre.toLowerCase());
-			busqueda.setPalabrasClaveProyectos(listaProyectos);
-			bRepository.save(busqueda);
-			return true;
+			if (bRepository.existsByUsername(username)) {
+				bRepository.deleteByUsername(username);
+				return true;
+			}
+			return false;
 		} catch (Exception e) {
-			throw new IOException("Error eliminar proyecto, busqueda: " + e.getMessage());
+			throw new IOException("error eliminar usuario en preguntas: " + e.getMessage());
 		}
 	}
 
-	@PutMapping("/busqueda/muro/eliminar/")
-	@ResponseStatus(code = HttpStatus.OK)
-	public Boolean eliminarMuro(@RequestParam List<Integer> listaMuro) throws IOException {
-		try {
-			Busqueda busqueda = bRepository.findByNombre("busqueda");
-			busqueda.setPalabrasClaveMuros(listaMuro);
-			bRepository.save(busqueda);
-			return true;
-		} catch (Exception e) {
-			throw new IOException("Error eliminar muro, busqueda: " + e.getMessage());
-		}
+//  ****************************	FUNCIONES TOLERANCIA A FALLOS	***********************************  //
 
+	private List<Proyectos> busquedaObtenerError(List<Integer> codigos, Throwable e) {
+		log.info(e.getMessage());
+		throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Servicio Proyectos no esta disponible");
 	}
 
-	public Boolean errorConexion(Throwable e) {
-		logger.info(e.getMessage());
-		return false;
-	}
 }
